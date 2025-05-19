@@ -10,6 +10,11 @@ interface FileSelection {
     folders: string[];
 }
 
+interface FileQuickPickItem extends vscode.QuickPickItem {
+    itemPath: string;
+    isDirectory: boolean;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Project To Text extension is now active!');
 
@@ -45,6 +50,26 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function getUserSelection(): Promise<FileSelection | null> {
+    // Ask user to choose input method
+    const inputMethod = await vscode.window.showQuickPick(
+        ['GUI Selection', 'Text Input'],
+        {
+            placeHolder: 'Choose how to select files/folders'
+        }
+    );
+
+    if (!inputMethod) {
+        return null; // User cancelled
+    }
+
+    if (inputMethod === 'GUI Selection') {
+        return await getGUISelection();
+    } else {
+        return await getTextSelection();
+    }
+}
+
+async function getTextSelection(): Promise<FileSelection | null> {
     const input = await vscode.window.showInputBox({
         prompt: 'Enter files/folders to include fully (comma-separated, e.g., "README.md, package.json, src/")',
         placeHolder: 'Leave empty to include all files fully'
@@ -71,6 +96,108 @@ async function getUserSelection(): Promise<FileSelection | null> {
     }
 
     return { files, folders };
+}
+
+async function getGUISelection(): Promise<FileSelection | null> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    
+    if (!workspaceFolder) {
+        vscode.window.showErrorMessage('No workspace folder is open');
+        return null;
+    }
+
+    // Get all files and folders in the workspace
+    const items = await getAllFilesAndFolders(workspaceFolder.uri.fsPath);
+    
+    // Create QuickPick items
+    const quickPickItems: FileQuickPickItem[] = items.map(item => ({
+        label: item.isDirectory ? `📁 ${item.relativePath}/` : `📄 ${item.relativePath}`,
+        itemPath: item.relativePath,
+        isDirectory: item.isDirectory,
+        description: item.isDirectory ? 'Folder' : 'File'
+    }));
+
+    // Show multi-select quick pick
+    const selected = await vscode.window.showQuickPick(quickPickItems, {
+        canPickMany: true,
+        placeHolder: 'Select files and folders to include fully (press Space to select, Enter to confirm)'
+    });
+
+    if (!selected) {
+        return null; // User cancelled
+    }
+
+    // If nothing selected, show warning
+    if (selected.length === 0) {
+        const choice = await vscode.window.showWarningMessage(
+            'No files or folders selected. Include all files fully?',
+            'Yes', 'No'
+        );
+        
+        if (choice === 'Yes') {
+            return { files: [], folders: [] }; // Include everything fully
+        } else {
+            return null; // User cancelled
+        }
+    }
+
+    // Separate files and folders
+    const files: string[] = [];
+    const folders: string[] = [];
+
+    for (const item of selected) {
+        if (item.isDirectory) {
+            folders.push(item.itemPath);
+        } else {
+            files.push(item.itemPath);
+        }
+    }
+
+    return { files, folders };
+}
+
+interface FileInfo {
+    relativePath: string;
+    isDirectory: boolean;
+}
+
+async function getAllFilesAndFolders(rootPath: string, currentPath: string = '', basePath?: string): Promise<FileInfo[]> {
+    const results: FileInfo[] = [];
+    const base = basePath || rootPath;
+    const fullPath = path.join(rootPath, currentPath);
+    
+    try {
+        const items = await fs.promises.readdir(fullPath);
+        
+        for (const item of items) {
+            // Skip common directories
+            if (item === 'node_modules' || item === '.git' || item === 'out' || item === '.vscode-test') {
+                continue;
+            }
+            
+            const itemPath = path.join(fullPath, item);
+            const itemRelativePath = path.join(currentPath, item);
+            const stats = await fs.promises.stat(itemPath);
+            
+            // Normalize path separators
+            const normalizedPath = itemRelativePath.replace(/\\/g, '/');
+            
+            results.push({
+                relativePath: normalizedPath,
+                isDirectory: stats.isDirectory()
+            });
+            
+            // Recursively get files from subdirectories
+            if (stats.isDirectory()) {
+                const subItems = await getAllFilesAndFolders(rootPath, itemRelativePath, base);
+                results.push(...subItems);
+            }
+        }
+    } catch (error) {
+        console.error(`Error reading directory ${fullPath}:`, error);
+    }
+    
+    return results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
 async function generateProjectText(rootPath: string, selection: FileSelection): Promise<string> {

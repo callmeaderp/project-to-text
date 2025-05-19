@@ -19,9 +19,18 @@ Extension can be activated via:
 
 ### Input Options
 
-When activated, users can specify files/folders to include fully:
-- Format: `README.md, package.json, src/`
-- If no input provided, includes all files fully
+When activated, users have two options:
+
+1. **GUI Selection** (NEW):
+   - Multi-select interface with checkboxes
+   - Shows all files and folders in the workspace
+   - Uses icons to distinguish files (📄) from folders (📁)
+   - Search/filter capability built-in
+   - Space to select, Enter to confirm
+
+2. **Text Input** (Original):
+   - Comma-separated format: `README.md, package.json, src/`
+   - If no input provided, includes all files fully
 
 ### Output Format
 
@@ -51,12 +60,13 @@ const example = true;
 
 ## Implementation Plan
 
-1. Replace "Hello World" command with "Project To Text"
-2. Implement file/folder selection dialog or command input
-3. Create directory tree builder
-4. Implement file content processor (full vs preview)
-5. Format output and copy to clipboard
-6. Add configuration for preview line count
+1. ✅ Replace "Hello World" command with "Project To Text"
+2. ✅ Implement file/folder selection dialog or command input
+3. ✅ Create directory tree builder
+4. ✅ Implement file content processor (full vs preview)
+5. ✅ Format output and copy to clipboard
+6. ✅ Add GUI selection mode with multi-select QuickPick
+7. ⏳ Add configuration for preview line count
 
 ## Development Commands
 
