@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "project-to-text.helloWorld",
-        "title": "Hello World"
+        "command": "project-to-text.convertToText",
+        "title": "Project To Text: Convert Project"
       }
     ]
   },
