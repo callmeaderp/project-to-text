@@ -66,7 +66,31 @@ const example = true;
 4. ✅ Implement file content processor (full vs preview)
 5. ✅ Format output and copy to clipboard
 6. ✅ Add GUI selection mode with multi-select QuickPick
-7. ⏳ Add configuration for preview line count
+7. ✅ Add configuration for preview line count
+8. ✅ Implement .gitignore support for exclusions
+9. ✅ Add comprehensive default exclusions for build artifacts
+10. ✅ Add configurable max directory tree depth
+11. ✅ Add configurable custom exclusion patterns
+
+## Configuration
+
+The extension provides several configuration options:
+
+- `projectToText.maxTreeDepth`: Maximum depth for directory tree (default: 10, 0 = unlimited)
+- `projectToText.customExclusions`: Additional patterns to exclude (default: [])
+- `projectToText.previewLines`: Number of preview lines for non-selected files (default: 5)
+
+## Default Exclusions
+
+Automatically excludes:
+- Version control: `.git`, `.svn`, `.hg`
+- Build outputs: `node_modules`, `dist`, `build`, `out`, `target`
+- IDE files: `.idea`, `.vscode`
+- Cache directories: `.cache`, `.next`, `__pycache__`
+- Lock files: `package-lock.json`, `yarn.lock`, `pubspec.lock`
+- Language-specific: `.dart_tool`, `.gradle`, `.eggs`, `*.pyc`
+- Temporary files: `*.log`, `*.tmp`, `*.temp`
+- And respects `.gitignore` patterns
 
 ## Development Commands
 

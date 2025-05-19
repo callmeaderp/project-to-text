@@ -17,7 +17,30 @@
         "command": "project-to-text.convertToText",
         "title": "Project To Text: Convert Project"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Project To Text",
+      "properties": {
+        "projectToText.maxTreeDepth": {
+          "type": "number",
+          "default": 10,
+          "description": "Maximum depth for directory tree display (0 = unlimited)"
+        },
+        "projectToText.customExclusions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional patterns to exclude from directory tree and file processing"
+        },
+        "projectToText.previewLines": {
+          "type": "number",
+          "default": 5,
+          "description": "Number of lines to show in file preview"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -37,5 +60,8 @@
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "minimatch": "^9.0.3"
   }
 }

@@ -1,9 +1,24 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { GitignoreParser, DEFAULT_EXCLUSIONS, shouldExclude } from './gitignore';
 
-const PREVIEW_LINES = 5;
 const TRUNCATION_MESSAGE = '[FILE TRUNCATED - showing {shown} of {total} lines]';
+
+interface ExtensionConfig {
+    maxTreeDepth: number;
+    customExclusions: string[];
+    previewLines: number;
+}
+
+function getConfig(): ExtensionConfig {
+    const config = vscode.workspace.getConfiguration('projectToText');
+    return {
+        maxTreeDepth: config.get<number>('maxTreeDepth', 10),
+        customExclusions: config.get<string[]>('customExclusions', []),
+        previewLines: config.get<number>('previewLines', 5)
+    };
+}
 
 interface FileSelection {
     files: string[];
@@ -106,8 +121,11 @@ async function getGUISelection(): Promise<FileSelection | null> {
         return null;
     }
 
+    // Get configuration
+    const config = getConfig();
+    
     // Get all files and folders in the workspace
-    const items = await getAllFilesAndFolders(workspaceFolder.uri.fsPath);
+    const items = await getAllFilesAndFolders(workspaceFolder.uri.fsPath, '', undefined, undefined, config);
     
     // Create QuickPick items
     const quickPickItems: FileQuickPickItem[] = items.map(item => ({
@@ -161,21 +179,31 @@ interface FileInfo {
     isDirectory: boolean;
 }
 
-async function getAllFilesAndFolders(rootPath: string, currentPath: string = '', basePath?: string): Promise<FileInfo[]> {
+async function getAllFilesAndFolders(rootPath: string, currentPath: string = '', basePath?: string, gitignore?: GitignoreParser, config?: ExtensionConfig): Promise<FileInfo[]> {
     const results: FileInfo[] = [];
     const base = basePath || rootPath;
     const fullPath = path.join(rootPath, currentPath);
+    
+    // Initialize gitignore parser on first call
+    if (!gitignore) {
+        gitignore = new GitignoreParser(rootPath);
+        await gitignore.load();
+    }
+    
+    // Get all exclusions including custom ones
+    const allExclusions = [...DEFAULT_EXCLUSIONS, ...(config?.customExclusions || [])];
     
     try {
         const items = await fs.promises.readdir(fullPath);
         
         for (const item of items) {
-            // Skip common directories
-            if (item === 'node_modules' || item === '.git' || item === 'out' || item === '.vscode-test') {
+            const itemPath = path.join(fullPath, item);
+            
+            // Check if item should be excluded
+            if (shouldExclude(itemPath, allExclusions) || gitignore.isIgnored(itemPath)) {
                 continue;
             }
             
-            const itemPath = path.join(fullPath, item);
             const itemRelativePath = path.join(currentPath, item);
             const stats = await fs.promises.stat(itemPath);
             
@@ -189,7 +217,7 @@ async function getAllFilesAndFolders(rootPath: string, currentPath: string = '',
             
             // Recursively get files from subdirectories
             if (stats.isDirectory()) {
-                const subItems = await getAllFilesAndFolders(rootPath, itemRelativePath, base);
+                const subItems = await getAllFilesAndFolders(rootPath, itemRelativePath, base, gitignore, config);
                 results.push(...subItems);
             }
         }
@@ -203,9 +231,16 @@ async function getAllFilesAndFolders(rootPath: string, currentPath: string = '',
 async function generateProjectText(rootPath: string, selection: FileSelection): Promise<string> {
     const output: string[] = [];
     
+    // Initialize gitignore parser
+    const gitignore = new GitignoreParser(rootPath);
+    await gitignore.load();
+    
+    // Get configuration
+    const config = getConfig();
+    
     // Generate directory structure
     output.push('Directory structure:');
-    const tree = await buildDirectoryTree(rootPath);
+    const tree = await buildDirectoryTree(rootPath, '', true, undefined, gitignore, config, 0);
     output.push(tree);
     output.push('');
     output.push('');
@@ -213,12 +248,12 @@ async function generateProjectText(rootPath: string, selection: FileSelection): 
     output.push('');
 
     // Process all files
-    await processDirectory(rootPath, rootPath, selection, output);
+    await processDirectory(rootPath, rootPath, selection, output, gitignore, config);
 
     return output.join('\n');
 }
 
-async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: boolean = true, basePath?: string): Promise<string> {
+async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: boolean = true, basePath?: string, gitignore?: GitignoreParser, config?: ExtensionConfig, currentDepth: number = 0): Promise<string> {
     const output: string[] = [];
     const base = basePath || dirPath;
     const relativePath = path.relative(base, dirPath);
@@ -227,23 +262,41 @@ async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: 
     // Add current directory
     output.push(prefix + (isLast ? '└── ' : '├── ') + dirName + '/');
     
+    // Check if we've reached max depth
+    if (config && config.maxTreeDepth > 0 && currentDepth >= config.maxTreeDepth) {
+        output.push(prefix + (isLast ? '    ' : '│   ') + '└── ...');
+        return output.join('\n');
+    }
+    
     // Read directory contents
     const items = await fs.promises.readdir(dirPath);
     const sortedItems = items.sort();
     
-    for (let i = 0; i < sortedItems.length; i++) {
-        const item = sortedItems[i];
+    // Get all exclusions including custom ones
+    const allExclusions = [...DEFAULT_EXCLUSIONS, ...(config?.customExclusions || [])];
+    
+    // Filter out excluded items
+    const filteredItems: string[] = [];
+    for (const item of sortedItems) {
+        const itemPath = path.join(dirPath, item);
+        
+        // Check if item should be excluded
+        if (shouldExclude(itemPath, allExclusions) || (gitignore && gitignore.isIgnored(itemPath))) {
+            continue;
+        }
+        
+        filteredItems.push(item);
+    }
+    
+    for (let i = 0; i < filteredItems.length; i++) {
+        const item = filteredItems[i];
         const itemPath = path.join(dirPath, item);
         const stats = await fs.promises.stat(itemPath);
-        const isLastItem = i === sortedItems.length - 1;
+        const isLastItem = i === filteredItems.length - 1;
         const newPrefix = prefix + (isLast ? '    ' : '│   ');
         
         if (stats.isDirectory()) {
-            // Skip node_modules and other common directories
-            if (item === 'node_modules' || item === '.git' || item === 'out') {
-                continue;
-            }
-            const subTree = await buildDirectoryTree(itemPath, newPrefix, isLastItem, base);
+            const subTree = await buildDirectoryTree(itemPath, newPrefix, isLastItem, base, gitignore, config, currentDepth + 1);
             output.push(subTree);
         } else {
             output.push(newPrefix + (isLastItem ? '└── ' : '├── ') + item);
@@ -253,23 +306,28 @@ async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: 
     return output.join('\n');
 }
 
-async function processDirectory(dirPath: string, rootPath: string, selection: FileSelection, output: string[]): Promise<void> {
+async function processDirectory(dirPath: string, rootPath: string, selection: FileSelection, output: string[], gitignore?: GitignoreParser, config?: ExtensionConfig): Promise<void> {
     const items = await fs.promises.readdir(dirPath);
+    
+    // Get all exclusions including custom ones
+    const allExclusions = [...DEFAULT_EXCLUSIONS, ...(config?.customExclusions || [])];
     
     for (const item of items) {
         const itemPath = path.join(dirPath, item);
+        
+        // Check if item should be excluded
+        if (shouldExclude(itemPath, allExclusions) || (gitignore && gitignore.isIgnored(itemPath))) {
+            continue;
+        }
+        
         const stats = await fs.promises.stat(itemPath);
         const relativePath = path.relative(rootPath, itemPath);
         
         if (stats.isDirectory()) {
-            // Skip common directories
-            if (item === 'node_modules' || item === '.git' || item === 'out') {
-                continue;
-            }
-            await processDirectory(itemPath, rootPath, selection, output);
+            await processDirectory(itemPath, rootPath, selection, output, gitignore, config);
         } else {
             const shouldIncludeFully = shouldIncludeFileFully(relativePath, selection);
-            await processFile(itemPath, relativePath, shouldIncludeFully, output);
+            await processFile(itemPath, relativePath, shouldIncludeFully, output, config);
         }
     }
 }
@@ -299,7 +357,7 @@ function shouldIncludeFileFully(relativePath: string, selection: FileSelection):
     return false;
 }
 
-async function processFile(filePath: string, relativePath: string, includeFully: boolean, output: string[]): Promise<void> {
+async function processFile(filePath: string, relativePath: string, includeFully: boolean, output: string[], config?: ExtensionConfig): Promise<void> {
     const displayPath = relativePath.replace(/\\/g, '/');
     output.push('================================================');
     output.push(`FILE: ${displayPath}${includeFully ? '' : ' (preview only)'}`);
@@ -313,12 +371,13 @@ async function processFile(filePath: string, relativePath: string, includeFully:
             output.push(content);
         } else {
             // Show only preview
-            const previewLines = lines.slice(0, PREVIEW_LINES);
-            output.push(previewLines.join('\n'));
+            const previewLines = config ? config.previewLines : 5;
+            const preview = lines.slice(0, previewLines);
+            output.push(preview.join('\n'));
             
-            if (lines.length > PREVIEW_LINES) {
+            if (lines.length > previewLines) {
                 output.push('...');
-                output.push(TRUNCATION_MESSAGE.replace('{shown}', PREVIEW_LINES.toString()).replace('{total}', lines.length.toString()));
+                output.push(TRUNCATION_MESSAGE.replace('{shown}', previewLines.toString()).replace('{total}', lines.length.toString()));
             }
         }
     } catch (error) {

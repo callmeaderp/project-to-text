@@ -1,60 +1,83 @@
-# Project To Text
+# Project To Text - VS Code Extension
 
-Convert your VS Code workspace into a formatted text file with selective content inclusion.
+Convert your VS Code workspace into a formatted text file with an organized directory structure and file contents. Perfect for sharing code with AI assistants, documentation, or code reviews.
 
 ## Features
 
-- **Convert any open workspace** to a formatted text file
-- **Two selection modes**:
-  - GUI Selection: Visual file/folder picker with multi-select
-  - Text Input: Comma-separated list (e.g., "README.md, src/")
-- **Smart content handling**:
-  - Selected files/folders: Full content included
-  - Non-selected files: Preview only (first 5 lines)
-- **Always includes** complete directory structure
-- **Instant clipboard** copy of the output
+- 📁 **Complete Directory Tree**: Displays the full structure of your project
+- 📄 **Selective File Inclusion**: Choose which files to include fully vs preview-only
+- 🚫 **Smart Exclusions**: Automatically respects .gitignore and excludes common build/cache directories
+- 🎯 **Flexible Selection**: GUI multi-select or text-based input for file selection
+- 📋 **Clipboard Ready**: Output is automatically copied to your clipboard
+- ⚙️ **Configurable**: Customize preview lines, tree depth, and exclusion patterns
 
 ## Usage
 
-1. Open any folder in VS Code
-2. Run the command: `Project To Text: Convert Project`
-   - Command Palette: `Ctrl+Shift+P` / `Cmd+Shift+P`
-   - Search for "Project To Text"
-3. Choose selection mode:
-   - **GUI Selection**: Use checkboxes to select files/folders
-   - **Text Input**: Enter comma-separated paths
-4. Output is automatically copied to clipboard
+Run the command `Project To Text: Convert Project` from:
+- Command Palette (`Ctrl/Cmd + Shift + P`)
+- Keyboard shortcut (if configured)
 
-## Output Format
+### Input Methods
+
+1. **GUI Selection** (Recommended)
+   - Multi-select checkboxes for files and folders
+   - Visual icons to distinguish files (📄) from folders (📁)
+   - Search/filter capability
+   - Space to select, Enter to confirm
+
+2. **Text Input**
+   - Enter comma-separated list: `README.md, package.json, src/`
+   - Leave empty to include all files fully
+
+### Output Format
 
 ```
 Directory structure:
 └── project-root/
-    ├── file1.js
-    ├── file2.js
-    └── src/
-        └── index.js
+    ├── src/
+    │   └── index.js
+    └── package.json
 
 Files Content:
 
 ================================================
-FILE: file1.js (fully included)
+FILE: src/index.js (fully included)
 ================================================
 [full content here]
 
 ================================================
-FILE: file2.js (preview only)
+FILE: package.json (preview only)
 ================================================
-// First few lines of code
-const example = true;
+{
+  "name": "my-project",
+  "version": "1.0.0",
 ...
-[FILE TRUNCATED - showing 5 of 150 lines]
+[FILE TRUNCATED - showing 5 of 25 lines]
 ```
+
+## Extension Settings
+
+This extension contributes the following settings:
+
+* `projectToText.maxTreeDepth`: Maximum depth for directory tree display (default: 10, 0 = unlimited)
+* `projectToText.customExclusions`: Additional patterns to exclude from directory tree and file processing (default: [])
+* `projectToText.previewLines`: Number of lines to show in file preview (default: 5)
+
+### Default Exclusions
+
+The extension automatically excludes common build artifacts and cache directories:
+- `node_modules`, `.git`, `.dart_tool`, `.idea`, `.vscode`
+- Build outputs: `out`, `dist`, `build`, `target`
+- Lock files: `package-lock.json`, `yarn.lock`, `pubspec.lock`
+- Cache directories: `.cache`, `.next`, `__pycache__`
+- And many more...
+
+Files and directories matching patterns in `.gitignore` are also automatically excluded.
 
 ## Examples
 
 ### GUI Selection Mode
-- Visual file browser with icons (📁 folders, 📄 files)
+- Visual file browser with icons (📁 folders, 📄 files)  
 - Multi-select with checkboxes
 - Search/filter functionality
 - Space to select, Enter to confirm
@@ -64,6 +87,11 @@ const example = true;
 - Leave empty to include all files fully
 - Folders must end with `/`
 
+## Requirements
+
+- VS Code 1.100.0 or higher
+- An open workspace folder
+
 ## Installation
 
 1. Install from VS Code Marketplace (coming soon)
@@ -72,26 +100,24 @@ const example = true;
    code --install-extension project-to-text-0.0.1.vsix
    ```
 
-## Requirements
-
-- VS Code 1.100.0 or higher
-
 ## Known Issues
 
-- Large files may take a moment to process
-- Binary files are skipped
+- Large projects may take a moment to process
+- Binary files are not included in the output
 
 ## Release Notes
 
 ### 0.0.1
 
 Initial release:
-- Basic text conversion functionality
-- GUI and text input selection modes
-- Directory tree visualization
-- File content preview/full inclusion
-- Clipboard integration
+- Basic project to text conversion
+- GUI and text-based file selection  
+- Directory tree generation
+- File content inclusion with preview mode
+- .gitignore support
+- Configurable settings for depth, exclusions, and preview lines
+- Smart default exclusions for common build artifacts
 
 ---
 
-**Enjoy converting your projects to text!**
+**Enjoy converting your projects to text! 🚀**
