@@ -62,7 +62,6 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "minimatch": "^9.0.3",
-    "project-to-text": "file:"
+    "minimatch": "^9.0.3"
   }
 }

@@ -86,6 +86,8 @@ export const DEFAULT_EXCLUSIONS = [
     'dist',
     'build',
     '.gradle',
+    '.cxx',
+    '.externalNativeBuild',
     'target',
     '*.log',
     '*.tmp',
@@ -110,7 +112,10 @@ export const DEFAULT_EXCLUSIONS = [
     '.bundle',
     'vendor/bundle',
     '.flutter-plugins',
+    '.flutter-plugins-dependencies',
     '.packages',
+    'ephemeral',
+    '.plugin_symlinks',
     'pubspec.lock',
     'package-lock.json',
     'yarn.lock',
@@ -121,7 +126,6 @@ export const DEFAULT_EXCLUSIONS = [
 
 export function shouldExclude(filePath: string, patterns: string[]): boolean {
     const fileName = path.basename(filePath);
-    const dirName = path.basename(path.dirname(filePath));
     
     for (const pattern of patterns) {
         if (pattern.includes('*')) {
@@ -130,9 +134,12 @@ export function shouldExclude(filePath: string, patterns: string[]): boolean {
                 return true;
             }
         } else {
-            // Direct match for directories or files
-            if (fileName === pattern || dirName === pattern) {
-                return true;
+            // Check if any part of the path matches the pattern
+            const pathParts = filePath.split(path.sep);
+            for (const part of pathParts) {
+                if (part === pattern) {
+                    return true;
+                }
             }
         }
     }

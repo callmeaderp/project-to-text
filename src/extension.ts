@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as cp from 'child_process';
 import { GitignoreParser, DEFAULT_EXCLUSIONS, shouldExclude } from './gitignore';
 
 const TRUNCATION_MESSAGE = '[FILE TRUNCATED - showing {shown} of {total} lines]';
@@ -49,14 +50,71 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         try {
+            // Debug: Log the selection
+            console.log('\n=== PROJECT TO TEXT - DEBUG INFO ===');
+            console.log('Workspace folder:', workspaceFolder.uri.fsPath);
+            console.log('Selection method:', selection ? 'Success' : 'Failed');
+            console.log('Selected files:', selection.files);
+            console.log('Selected folders:', selection.folders);
+            console.log('Full selection object:', JSON.stringify(selection, null, 2));
+            console.log('=====================================\n');
+            
             // Generate the output
             const output = await generateProjectText(workspaceFolder.uri.fsPath, selection);
             
-            // Copy to clipboard
-            await vscode.env.clipboard.writeText(output);
+            // Save to temp file and try to copy to clipboard
+            console.log('Output length:', output.length);
             
-            vscode.window.showInformationMessage('Project text copied to clipboard!');
+            try {
+                // First attempt to copy to clipboard (for convenience, when it works)
+                await vscode.env.clipboard.writeText(output);
+                console.log('Clipboard write operation completed');
+                
+                // Verify if clipboard content was truncated
+                const clipboardText = await vscode.env.clipboard.readText();
+                const clipboardComplete = clipboardText.length === output.length;
+                console.log('Clipboard content length:', clipboardText.length, 'Complete:', clipboardComplete);
+                
+                // Always save to temp file (regardless of clipboard success)
+                // Generate a unique filename in the OS temp directory
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const projectName = path.basename(workspaceFolder.uri.fsPath);
+                const tempFilename = `project-to-text_${projectName}_${timestamp}.txt`;
+                
+                // Use system temp directory (or user's temp directory)
+                const tempDir = require('os').tmpdir();
+                const tempFilePath = path.join(tempDir, tempFilename);
+                
+                // Write the file
+                await fs.promises.writeFile(tempFilePath, output);
+                console.log('Output saved to temp file:', tempFilePath);
+                
+                // Open the file in Windows Notepad
+                try {
+                    // Try using openExternal first
+                    await vscode.env.openExternal(vscode.Uri.file(tempFilePath));
+                } catch (error) {
+                    // Use child_process as a fallback for Windows
+                    if (process.platform === 'win32' || process.platform.includes('win')) {
+                        cp.exec('start notepad.exe "' + tempFilePath + '"');
+                    } else if (process.platform === 'linux' && process.env.WSL_DISTRO_NAME) {
+                        // Handle WSL - use powershell to open notepad
+                        cp.exec('powershell.exe -Command "start notepad \\"' + tempFilePath.replace(/\//g, '\\\\') + '\\""');
+                    }
+                }
+                
+                // Inform the user
+                if (clipboardComplete) {
+                    vscode.window.showInformationMessage('Project text copied to clipboard and opened in Notepad');
+                } else {
+                    vscode.window.showInformationMessage('Output too large for clipboard - opened in Notepad for copying');
+                }
+            } catch (error) {
+                console.error('Error handling output:', error);
+                vscode.window.showErrorMessage(`Error: ${error}`);
+            }
         } catch (error) {
+            console.error('Error generating project text:', error);
             vscode.window.showErrorMessage(`Error: ${error}`);
         }
     });
@@ -98,15 +156,64 @@ async function getTextSelection(): Promise<FileSelection | null> {
         return { files: [], folders: [] }; // Include everything fully
     }
 
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+        throw new Error('No workspace folder found');
+    }
+
     const items = input.split(',').map(item => item.trim());
     const files: string[] = [];
     const folders: string[] = [];
 
+    console.log(`getTextSelection: Processing input items: [${items.join(', ')}]`);
+
     for (const item of items) {
-        if (item.endsWith('/')) {
-            folders.push(item.slice(0, -1));
-        } else {
-            files.push(item);
+        console.log(`  Processing item: "${item}"`);
+        
+        // Remove leading slash if present
+        let cleanItem = item.startsWith('/') ? item.substring(1) : item;
+        // Remove trailing slash for consistency
+        cleanItem = cleanItem.endsWith('/') ? cleanItem.slice(0, -1) : cleanItem;
+        
+        console.log(`    Cleaned item: "${cleanItem}"`);
+        
+        // Check if the item exists and whether it's a file or directory
+        const fullPath = path.join(workspaceFolder.uri.fsPath, cleanItem);
+        console.log(`    Full path: "${fullPath}"`);
+        
+        try {
+            const stats = await fs.promises.stat(fullPath);
+            if (stats.isDirectory()) {
+                console.log(`    Result: Directory - adding to folders: "${cleanItem}"`);
+                folders.push(cleanItem);
+            } else {
+                console.log(`    Result: File - adding to files: "${cleanItem}"`);
+                files.push(cleanItem);
+            }
+        } catch (error) {
+            console.log(`    Error checking path: ${error}`);
+            // If it doesn't exist yet, guess based on pattern
+            if (item.endsWith('/')) {
+                console.log(`    Guessing directory (ends with /) - adding to folders: "${cleanItem}"`);
+                folders.push(cleanItem);
+            } else {
+                // For ambiguous cases like "lib", check if it exists as a directory
+                console.log(`    Ambiguous case - checking again`);
+                try {
+                    const stats = await fs.promises.stat(fullPath);
+                    if (stats.isDirectory()) {
+                        console.log(`    Found as directory - adding to folders: "${cleanItem}"`);
+                        folders.push(cleanItem);
+                    } else {
+                        console.log(`    Found as file - adding to files: "${cleanItem}"`);
+                        files.push(cleanItem);
+                    }
+                } catch {
+                    // Default to treating as file if can't determine
+                    console.log(`    Cannot determine - defaulting to file: "${cleanItem}"`);
+                    files.push(cleanItem);
+                }
+            }
         }
     }
 
@@ -171,6 +278,9 @@ async function getGUISelection(): Promise<FileSelection | null> {
         }
     }
 
+    console.log('Selected files:', files);
+    console.log('Selected folders:', folders);
+
     return { files, folders };
 }
 
@@ -231,6 +341,10 @@ async function getAllFilesAndFolders(rootPath: string, currentPath: string = '',
 async function generateProjectText(rootPath: string, selection: FileSelection): Promise<string> {
     const output: string[] = [];
     
+    console.log('\n=== GENERATE PROJECT TEXT ===');
+    console.log('Root path:', rootPath);
+    console.log('Selection:', JSON.stringify(selection, null, 2));
+    
     // Initialize gitignore parser
     const gitignore = new GitignoreParser(rootPath);
     await gitignore.load();
@@ -248,9 +362,46 @@ async function generateProjectText(rootPath: string, selection: FileSelection): 
     output.push('');
 
     // Process all files
-    await processDirectory(rootPath, rootPath, selection, output, gitignore, config);
-
-    return output.join('\n');
+    const fileCount = { total: 0, included: 0 };
+    console.log('\nStarting file processing...');
+    await processDirectory(rootPath, rootPath, selection, output, gitignore, config, fileCount);
+    
+    console.log(`\nProcessing complete. Total files: ${fileCount.total}, Included fully: ${fileCount.included}`);
+    console.log('Output array length:', output.length);
+    console.log('Total output size:', output.join('\n').length, 'characters');
+    console.log('=============================\n');
+    
+    const finalOutput = output.join('\n');
+    
+    // Add library files debugging
+    console.log('OUTPUT ARRAY DIAGNOSTICS:');
+    console.log('Total output array items:', output.length);
+    
+    // Check for lib files in the output array
+    const libFileHeaders = output.filter(line => line.includes('FILE: lib/') && line.includes('(fully included)'));
+    console.log('Number of lib file headers found:', libFileHeaders.length);
+    if (libFileHeaders.length > 0) {
+        console.log('Sample lib file headers:', libFileHeaders.slice(0, 3));
+        
+        // Check positions of lib file headers in the array
+        libFileHeaders.slice(0, 3).forEach(header => {
+            const index = output.indexOf(header);
+            console.log(`Header "${header}" found at index ${index}`);
+            console.log(`5 items before:`, output.slice(Math.max(0, index - 5), index));
+            console.log(`5 items after:`, output.slice(index + 1, index + 6));
+        });
+    }
+    
+    // Check if lib files are retained in the final output string
+    const libFilesInFinalOutput = finalOutput.includes('FILE: lib/');
+    console.log('Lib files found in final output string:', libFilesInFinalOutput);
+    
+    // Check potential truncation
+    console.log('Final output length:', finalOutput.length);
+    console.log('Final output preview (first 1000 chars):', finalOutput.substring(0, 1000));
+    console.log('Final output preview (last 1000 chars):', finalOutput.substring(Math.max(0, finalOutput.length - 1000)));
+    
+    return finalOutput;
 }
 
 async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: boolean = true, basePath?: string, gitignore?: GitignoreParser, config?: ExtensionConfig, currentDepth: number = 0): Promise<string> {
@@ -306,17 +457,30 @@ async function buildDirectoryTree(dirPath: string, prefix: string = '', isLast: 
     return output.join('\n');
 }
 
-async function processDirectory(dirPath: string, rootPath: string, selection: FileSelection, output: string[], gitignore?: GitignoreParser, config?: ExtensionConfig): Promise<void> {
+async function processDirectory(dirPath: string, rootPath: string, selection: FileSelection, output: string[], gitignore?: GitignoreParser, config?: ExtensionConfig, fileCount?: { total: number, included: number }): Promise<void> {
     const items = await fs.promises.readdir(dirPath);
+    const relativeDirPath = path.relative(rootPath, dirPath);
+    console.log(`\n>>> PROCESSING DIRECTORY: "${dirPath}"`);
+    console.log(`>>> Relative path: "${relativeDirPath || '(root)'}"`);
+    console.log(`>>> Contains ${items.length} items: [${items.join(', ')}]`);
     
     // Get all exclusions including custom ones
     const allExclusions = [...DEFAULT_EXCLUSIONS, ...(config?.customExclusions || [])];
     
     for (const item of items) {
+        console.log(`\n  Checking item: "${item}"`);
         const itemPath = path.join(dirPath, item);
+        console.log(`  Full path: "${itemPath}"`);
         
         // Check if item should be excluded
-        if (shouldExclude(itemPath, allExclusions) || (gitignore && gitignore.isIgnored(itemPath))) {
+        const isExcludedByPattern = shouldExclude(itemPath, allExclusions);
+        const isIgnoredByGitignore = gitignore ? gitignore.isIgnored(itemPath) : false;
+        
+        console.log(`  Excluded by pattern: ${isExcludedByPattern}`);
+        console.log(`  Ignored by gitignore: ${isIgnoredByGitignore}`);
+        
+        if (isExcludedByPattern || isIgnoredByGitignore) {
+            console.log(`  SKIPPING: ${item} (pattern: ${isExcludedByPattern}, gitignore: ${isIgnoredByGitignore})`);
             continue;
         }
         
@@ -324,10 +488,20 @@ async function processDirectory(dirPath: string, rootPath: string, selection: Fi
         const relativePath = path.relative(rootPath, itemPath);
         
         if (stats.isDirectory()) {
-            await processDirectory(itemPath, rootPath, selection, output, gitignore, config);
+            console.log(`  Found directory: ${item} (full path: ${relativePath})`);
+            console.log(`  About to enter directory: ${itemPath}`);
+            await processDirectory(itemPath, rootPath, selection, output, gitignore, config, fileCount);
+            console.log(`  Finished processing directory: ${relativePath}`);
         } else {
+            if (fileCount) fileCount.total++;
             const shouldIncludeFully = shouldIncludeFileFully(relativePath, selection);
-            await processFile(itemPath, relativePath, shouldIncludeFully, output, config);
+            if (shouldIncludeFully) {
+                if (fileCount) fileCount.included++;
+                console.log(`  File: ${relativePath} - include fully: true`);
+                await processFile(itemPath, relativePath, true, output, config);
+            } else {
+                console.log(`  File: ${relativePath} - skipping (not selected)`);
+            }
         }
     }
 }
@@ -338,48 +512,62 @@ function shouldIncludeFileFully(relativePath: string, selection: FileSelection):
         return true;
     }
     
-    // Normalize path separators for comparison
-    const normalizedPath = relativePath.replace(/\\/g, '/');
+    // Normalize path separators for comparison and remove any leading slashes
+    const normalizedPath = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     
-    // Check if file is explicitly selected
-    if (selection.files.includes(relativePath) || selection.files.includes(normalizedPath)) {
+    console.log(`    shouldIncludeFileFully called:`);
+    console.log(`      Original path: "${relativePath}"`);
+    console.log(`      Normalized path: "${normalizedPath}"`);
+    console.log(`      Selected files: [${selection.files.join(', ')}]`);
+    console.log(`      Selected folders: [${selection.folders.join(', ')}]`);
+    
+    // Check if file is explicitly selected (normalize both sides)
+    const normalizedSelectedFiles = selection.files.map(f => f.replace(/\\/g, '/').replace(/^\/+/, ''));
+    if (normalizedSelectedFiles.includes(normalizedPath)) {
+        console.log(`      Result: TRUE (file explicitly selected)`);
         return true;
     }
     
     // Check if file is in a selected folder
     for (const folder of selection.folders) {
-        const normalizedFolder = folder.replace(/\\/g, '/');
-        if (normalizedPath.startsWith(normalizedFolder + '/')) {
+        // Normalize folder path and remove leading slashes
+        const normalizedFolder = folder.replace(/\\/g, '/').replace(/^\/+/, '');
+        
+        console.log(`      Checking against folder: "${folder}" -> normalized: "${normalizedFolder}"`);
+        
+        // Check if the file path is within the selected folder
+        // We need to handle the case where the folder itself matches or the file is within it
+        if (normalizedPath === normalizedFolder || 
+            normalizedPath.startsWith(normalizedFolder + '/')) {
+            console.log(`      Result: TRUE (file is within selected folder "${normalizedFolder}")`);
             return true;
         }
     }
     
+    console.log(`      Result: FALSE (file not selected)`);
     return false;
 }
 
 async function processFile(filePath: string, relativePath: string, includeFully: boolean, output: string[], config?: ExtensionConfig): Promise<void> {
     const displayPath = relativePath.replace(/\\/g, '/');
+    console.log(`processFile called - path: ${displayPath}`);
     output.push('================================================');
-    output.push(`FILE: ${displayPath}${includeFully ? '' : ' (preview only)'}`);
+    output.push(`FILE: ${displayPath}`);
     output.push('================================================');
     
     try {
         const content = await fs.promises.readFile(filePath, 'utf-8');
-        const lines = content.split('\n');
+        console.log(`  Adding content for ${displayPath} (${content.length} chars)`);
         
-        if (includeFully) {
-            output.push(content);
-        } else {
-            // Show only preview
-            const previewLines = config ? config.previewLines : 5;
-            const preview = lines.slice(0, previewLines);
-            output.push(preview.join('\n'));
-            
-            if (lines.length > previewLines) {
-                output.push('...');
-                output.push(TRUNCATION_MESSAGE.replace('{shown}', previewLines.toString()).replace('{total}', lines.length.toString()));
-            }
+        // Push the content line by line instead of as a whole blob
+        // This ensures proper handling of newlines and prevents content merging issues
+        const contentLines = content.split('\n');
+        for (const line of contentLines) {
+            output.push(line);
         }
+        
+        // Add a debug marker after processing a file
+        console.log(`  ✓ Content added - output array now has ${output.length} items`);
     } catch (error) {
         output.push(`[Error reading file: ${error}]`);
     }
