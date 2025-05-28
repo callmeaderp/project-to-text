@@ -8,12 +8,17 @@ Convert your VS Code workspace into a formatted text file with an organized dire
 - 📄 **Selective File Inclusion**: Choose which files to include fully vs preview-only
 - 🚫 **Smart Exclusions**: Automatically respects .gitignore and excludes common build/cache directories
 - 🎯 **Flexible Selection**: GUI multi-select or text-based input for file selection
-- 📋 **Clipboard Ready**: Output is automatically copied to your clipboard
+- 📋 **VS Code Editor**: Output opens directly in a new VS Code editor tab
 - ⚙️ **Configurable**: Customize preview lines, tree depth, and exclusion patterns
 
 ## Usage
 
-Run the command `Project To Text: Convert Project` from:
+### Available Commands
+
+1. **Project To Text: Convert Project** - Standard conversion with full file contents
+2. **Project To Text: Convert Project (Concise Mode)** - Shows only essential code elements (imports, exports, function/class signatures, comments)
+
+Run commands from:
 - Command Palette (`Ctrl/Cmd + Shift + P`)
 - Keyboard shortcut (if configured)
 
@@ -62,6 +67,8 @@ This extension contributes the following settings:
 * `projectToText.maxTreeDepth`: Maximum depth for directory tree display (default: 10, 0 = unlimited)
 * `projectToText.customExclusions`: Additional patterns to exclude from directory tree and file processing (default: [])
 * `projectToText.previewLines`: Number of lines to show in file preview (default: 5)
+* `projectToText.conciseMode`: Enable concise mode by default (can be overridden by using the concise command) (default: false)
+* `projectToText.directoriesOnly`: Show only directory structure without file contents unless explicitly selected (default: false)
 
 ### Default Exclusions
 
@@ -103,7 +110,7 @@ Files and directories matching patterns in `.gitignore` are also automatically e
 ## Known Issues
 
 - Large projects may take a moment to process
-- Binary files are not included in the output
+- Binary files (images, videos, executables, etc.) are shown in the directory tree but their content is not included
 
 ## Release Notes
 

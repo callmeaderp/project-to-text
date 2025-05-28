@@ -16,6 +16,10 @@
       {
         "command": "project-to-text.convertToText",
         "title": "Project To Text: Convert Project"
+      },
+      {
+        "command": "project-to-text.convertToTextConcise",
+        "title": "Project To Text: Convert Project (Concise Mode)"
       }
     ],
     "configuration": {
@@ -38,14 +42,24 @@
           "type": "number",
           "default": 5,
           "description": "Number of lines to show in file preview"
+        },
+        "projectToText.conciseMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable concise mode to show only essential code elements (imports, comments, function signatures without bodies)"
+        },
+        "projectToText.directoriesOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show only directory structure without file contents unless explicitly selected"
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "node ./node_modules/typescript/bin/tsc -p ./",
+    "watch": "node ./node_modules/typescript/bin/tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
@@ -62,6 +76,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "minimatch": "^9.0.3"
+    "minimatch": "^9.0.3",
+    "project-to-text": "file:"
   }
 }

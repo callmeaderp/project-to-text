@@ -7,7 +7,9 @@
       "Bash(npm install)",
       "Bash(rm:*)",
       "Bash(npx ts-node:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": []
   }

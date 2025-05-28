@@ -8,11 +8,16 @@ This VS Code extension converts open workspace projects into formatted text file
 2. Allows selective file/folder inclusion with full content
 3. Non-selected files show only preview (first few lines) with truncation indicator
 4. Always includes complete directory structure
-5. Copies output directly to clipboard
+5. Opens output in a new VS Code editor tab
+6. Binary files (images, videos, etc.) appear in directory tree but content is excluded
 
 ## Usage
 
-Extension can be activated via:
+Extension provides two commands:
+1. **Project To Text: Convert Project** - Standard conversion with full file contents
+2. **Project To Text: Convert Project (Concise Mode)** - Shows only essential code elements (imports, exports, function/class signatures, comments)
+
+Commands can be activated via:
 - Command palette
 - Keyboard shortcut
 - Command line (if parameters needed)
